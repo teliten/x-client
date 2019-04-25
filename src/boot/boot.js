@@ -21,7 +21,24 @@ function injectScript(doc, src) {
   doc.head.appendChild(script);
 }
 
-function injectAssets(doc, config, assets) {
+async function injectPagefit(doc, config) {
+  return new Promise(function (resolve) {
+    if (doc.URL.startsWith('chrome-extension://klbpknfhnhedbbonpfpceagkglpbcmnb/content/web/viewer.html')) {
+      resolve()
+    } else {
+      injectScript(doc, "".concat(config.assetRoot, "/pagefit2.js"));
+      resolve()
+    }
+  })
+}
+
+
+async function injectAssets(doc, config, assets) {
+  function delay(seconds) {
+    return new Promise(resolve => setTimeout(resolve, seconds * 1000))
+  }
+  await injectPagefit(doc, config)
+  await delay(.5)
   assets.forEach(function(path) {
     const url = config.assetRoot + 'build/' + config.manifest[path];
     if (url.match(/\.css/)) {

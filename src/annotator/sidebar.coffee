@@ -98,6 +98,7 @@ module.exports = class Sidebar extends Host
     this
 
   _setupGestures: ->
+    return
     $toggle = @toolbar.find('[name=sidebar-toggle]')
 
     if $toggle[0]
