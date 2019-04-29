@@ -16,6 +16,7 @@ const DEFAULT_ORGANIZATION = {
 const events = require('../events');
 const { awaitStateChange } = require('../util/state-util');
 const { combineGroups } = require('../util/groups');
+const memoize = require('../util/memoize');
 const serviceConfig = require('../service-config');
 
 // @ngInject
@@ -58,9 +59,28 @@ function groups(
    * @param {Group[]} groups
    * @param {boolean} isLoggedIn
    * @param {string|null} directLinkedAnnotationId
+   * @param {string|null} directLinkedGroupId
    * @return {Promise<Group[]>}
    */
-  function filterGroups(groups, isLoggedIn, directLinkedAnnotationId) {
+  function filterGroups(
+    groups,
+    isLoggedIn,
+    directLinkedAnnotationId,
+    directLinkedGroupId
+  ) {
+    // Filter the directLinkedGroup out if it is out of scope and scope is enforced.
+    if (directLinkedGroupId) {
+      const directLinkedGroup = groups.find(g => g.id === directLinkedGroupId);
+      if (
+        directLinkedGroup &&
+        !directLinkedGroup.isScopedToUri &&
+        directLinkedGroup.scopes.enforced
+      ) {
+        groups = groups.filter(g => g.id !== directLinkedGroupId);
+        directLinkedGroupId = undefined;
+      }
+    }
+
     // If service groups are specified only return those.
     // If a service group doesn't exist in the list of groups don't return it.
     if (svc && svc.groups) {
@@ -77,7 +97,9 @@ function groups(
 
     // If the main document URL has no groups associated with it, always show
     // the "Public" group.
-    const pageHasAssociatedGroups = groups.some(g => g.id !== '__world__');
+    const pageHasAssociatedGroups = groups.some(
+      g => g.id !== '__world__' && g.isScopedToUri
+    );
     if (!pageHasAssociatedGroups) {
       return Promise.resolve(groups);
     }
@@ -86,18 +108,26 @@ function groups(
     // link to an annotation in that group.
     const nonWorldGroups = groups.filter(g => g.id !== '__world__');
 
-    if (!directLinkedAnnotationId) {
+    if (!directLinkedAnnotationId && !directLinkedGroupId) {
       return Promise.resolve(nonWorldGroups);
     }
 
-    return api.annotation
-      .get({ id: directLinkedAnnotationId })
+    // If directLinkedGroup is the "Public" group, always return groups.
+    if (directLinkedGroupId === '__world__') {
+      return groups;
+    }
+
+    // If the directLinkedAnnotationId's group is the "Public" group return groups,
+    // otherwise filter out the "Public" group.
+
+    // Force getAnnotation to enter the catch clause if there is no linked annotation.
+    const getAnnotation = directLinkedAnnotationId
+      ? api.annotation.get({ id: directLinkedAnnotationId })
+      : Promise.reject();
+
+    return getAnnotation
       .then(ann => {
-        if (ann.group === '__world__') {
-          return groups;
-        } else {
-          return nonWorldGroups;
-        }
+        return ann.group === '__world__' ? groups : nonWorldGroups;
       })
       .catch(() => {
         // Annotation does not exist or we do not have permission to read it.
@@ -141,10 +171,11 @@ function groups(
     if (isSidebar) {
       uri = getDocumentUriForGroupSearch();
     }
+    const directLinkedGroup = settings.group;
     return uri
       .then(uri => {
         const params = {
-          expand: 'organization',
+          expand: ['organization', 'scopes'],
         };
         if (authority) {
           params.authority = authority;
@@ -154,32 +185,54 @@ function groups(
         }
         documentUri = uri;
 
-        if (features.flagEnabled('community_groups')) {
-          params.expand = ['organization', 'scopes'];
-          const profileParams = {
-            expand: ['organization', 'scopes'],
-          };
-          const profileGroupsApi = api.profile.groups.read(profileParams);
-          const listGroupsApi = api.groups.list(params);
-          return Promise.all([
-            profileGroupsApi,
-            listGroupsApi,
-            auth.tokenGetter(),
-          ]).then(([myGroups, featuredGroups, token]) => [
-            combineGroups(myGroups, featuredGroups, documentUri),
-            token,
-          ]);
-        } else {
-          // Fetch groups from the API.
-          return api.groups
-            .list(params, null, { includeMetadata: true })
-            .then(({ data, token }) => [data, token]);
+        const profileGroupsApi = api.profile.groups.read({
+          expand: params.expand,
+        });
+        const listGroupsApi = api.groups.list(params);
+        let groupApiRequests = [
+          profileGroupsApi,
+          listGroupsApi,
+          auth.tokenGetter(),
+        ];
+
+        // If there is a directLinkedGroup, add an api request to get that
+        // particular group as well since it may not be in the results returned
+        // by group.list or profile.groups.
+        if (directLinkedGroup) {
+          const selectedGroupApi = api.group
+            .read({
+              id: directLinkedGroup,
+              expand: params.expand,
+            })
+            .catch(() => {
+              // If the group does not exist or the user doesn't have permission,
+              // return undefined.
+              return undefined;
+            });
+          groupApiRequests = groupApiRequests.concat(selectedGroupApi);
         }
+        return Promise.all(groupApiRequests).then(
+          ([myGroups, featuredGroups, token, selectedGroup]) => [
+            combineGroups(
+              myGroups,
+              selectedGroup !== undefined
+                ? featuredGroups.concat([selectedGroup])
+                : featuredGroups,
+              documentUri
+            ),
+            token,
+          ]
+        );
       })
       .then(([groups, token]) => {
         const isLoggedIn = token !== null;
         const directLinkedAnnotation = settings.annotations;
-        return filterGroups(groups, isLoggedIn, directLinkedAnnotation);
+        return filterGroups(
+          groups,
+          isLoggedIn,
+          directLinkedAnnotation,
+          directLinkedGroup
+        );
       })
       .then(groups => {
         injectOrganizations(groups);
@@ -188,7 +241,9 @@ function groups(
         const prevFocusedGroup = localStorage.getItem(STORAGE_KEY);
 
         store.loadGroups(groups);
-        if (isFirstLoad && groups.some(g => g.id === prevFocusedGroup)) {
+        if (isFirstLoad && groups.some(g => g.id === directLinkedGroup)) {
+          store.focusGroup(directLinkedGroup);
+        } else if (isFirstLoad && groups.some(g => g.id === prevFocusedGroup)) {
           store.focusGroup(prevFocusedGroup);
         }
 
@@ -196,8 +251,25 @@ function groups(
       });
   }
 
+  const sortGroups = memoize(groups => {
+    // Sort in the following order: scoped, public, private.
+    // This is for maintaining the order of the old groups menu so when
+    // the old groups menu is removed this can be removed.
+    const worldGroups = groups.filter(g => g.id === '__world__');
+    const nonWorldScopedGroups = groups.filter(
+      g => g.id !== '__world__' && ['open', 'restricted'].includes(g.type)
+    );
+    const remainingGroups = groups.filter(
+      g => !worldGroups.includes(g) && !nonWorldScopedGroups.includes(g)
+    );
+    return nonWorldScopedGroups.concat(worldGroups).concat(remainingGroups);
+  });
+
   function all() {
-    return store.allGroups();
+    if (features.flagEnabled('community_groups')) {
+      return store.allGroups();
+    }
+    return sortGroups(store.getInScopeGroups());
   }
 
   // Return the full object for the group with the given id.

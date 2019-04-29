@@ -1,71 +1,64 @@
 'use strict';
 
-const angular = require('angular');
-const groupListSection = require('../group-list-section');
-const util = require('../../directive/test/util');
+const { shallow } = require('enzyme');
+const { createElement } = require('preact');
 
-describe('groupListSection', () => {
-  before(() => {
-    angular.module('app', []).component('groupListSection', groupListSection);
-  });
+const GroupListSection = require('../group-list-section');
+const GroupListItem = require('../group-list-item');
+const GroupListItemOutOfScope = require('../group-list-item-out-of-scope');
 
-  beforeEach(() => {
-    angular.mock.module('app', {});
-  });
-
-  const createGroupListSection = (
-    fakeSectionGroups,
-    fakeDisableOosGroupSelection
-  ) => {
-    const config = {
-      sectionGroups: fakeSectionGroups,
-    };
-    if (fakeDisableOosGroupSelection !== undefined) {
-      config.disableOosGroupSelection = fakeDisableOosGroupSelection;
-    }
-    return util.createDirective(document, 'groupListSection', config);
+describe('GroupListSection', () => {
+  const createGroupListSection = groups => {
+    return shallow(
+      <GroupListSection groups={groups} analytics={{}} store={{}} />
+    );
   };
 
-  describe('isSelectable', () => {
+  describe('group item types', () => {
     [
       {
-        description: 'always returns true if disableOosGroupSelection is false',
-        fakeDisableOosGroupSelection: false,
+        description:
+          'renders GroupListItem if group is out of scope but scope is not enforced',
+        scopesEnforced: false,
         expectedIsSelectable: [true, true],
       },
       {
         description:
-          'always returns true if disableOosGroupSelection is undefined',
-        fakeDisableOosGroupSelection: undefined,
-        expectedIsSelectable: [true, true],
-      },
-      {
-        description:
-          'returns false if disableOosGroupSelection is true and group is out of scope',
-        fakeDisableOosGroupSelection: true,
+          'renders GroupListItemOutOfScope if group is out of scope and scope is enforced',
+        scopesEnforced: true,
         expectedIsSelectable: [true, false],
       },
-    ].forEach(
-      ({ description, fakeDisableOosGroupSelection, expectedIsSelectable }) => {
-        it(description, () => {
-          const fakeSectionGroups = [
-            { isScopedToUri: true, id: 0 },
-            { isScopedToUri: false, id: 1 },
-          ];
+    ].forEach(({ description, scopesEnforced, expectedIsSelectable }) => {
+      it(description, () => {
+        const groups = [
+          {
+            isScopedToUri: true,
+            scopes: { enforced: scopesEnforced },
+            id: 0,
+          },
+          {
+            isScopedToUri: false,
+            scopes: { enforced: scopesEnforced },
+            id: 1,
+          },
+        ];
 
-          const element = createGroupListSection(
-            fakeSectionGroups,
-            fakeDisableOosGroupSelection
-          );
+        const wrapper = createGroupListSection(groups);
 
-          fakeSectionGroups.forEach(g =>
-            assert.equal(
-              element.ctrl.isSelectable(g.id),
-              expectedIsSelectable[g.id]
-            )
-          );
-        });
-      }
-    );
+        // Check that the correct group item components were rendered for
+        // each group, depending on whether the group can be annotated in on
+        // the current document.
+        const itemTypes = wrapper
+          .findWhere(
+            n =>
+              n.type() === GroupListItem || n.type() === GroupListItemOutOfScope
+          )
+          .map(item => item.type());
+        const expectedItemTypes = groups.map(g =>
+          expectedIsSelectable[g.id] ? GroupListItem : GroupListItemOutOfScope
+        );
+        assert.deepEqual(itemTypes, expectedItemTypes);
+      });
+    });
   });
 });

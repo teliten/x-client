@@ -30,7 +30,11 @@ const sessionWithThreeGroups = function() {
 };
 
 const dummyGroups = [
-  { name: 'Group 1', id: 'id1' },
+  {
+    name: 'Group 1',
+    id: 'id1',
+    scopes: { enforced: false, uri_patterns: ['http://foo.com'] },
+  },
   { name: 'Group 2', id: 'id2' },
   { name: 'Group 3', id: 'id3' },
 ];
@@ -46,7 +50,6 @@ describe('groups', function() {
   let fakeLocalStorage;
   let fakeRootScope;
   let fakeServiceUrl;
-  let sandbox;
 
   beforeEach(function() {
     fakeAuth = {
@@ -55,7 +58,6 @@ describe('groups', function() {
     fakeFeatures = {
       flagEnabled: sinon.stub().returns(false),
     };
-    sandbox = sinon.sandbox.create();
 
     fakeStore = fakeReduxStore(
       {
@@ -68,6 +70,9 @@ describe('groups', function() {
         getGroup: sinon.stub(),
         loadGroups: sinon.stub(),
         allGroups() {
+          return this.getState().groups;
+        },
+        getInScopeGroups() {
           return this.getState().groups;
         },
         focusedGroup() {
@@ -85,8 +90,8 @@ describe('groups', function() {
     fakeSession = sessionWithThreeGroups();
     fakeIsSidebar = true;
     fakeLocalStorage = {
-      getItem: sandbox.stub(),
-      setItem: sandbox.stub(),
+      getItem: sinon.stub(),
+      setItem: sinon.stub(),
     };
     fakeRootScope = {
       eventCallbacks: {},
@@ -101,7 +106,7 @@ describe('groups', function() {
         }
       },
 
-      $broadcast: sandbox.stub(),
+      $broadcast: sinon.stub(),
     };
     fakeApi = {
       annotation: {
@@ -110,29 +115,21 @@ describe('groups', function() {
 
       group: {
         member: {
-          delete: sandbox.stub().returns(Promise.resolve()),
+          delete: sinon.stub().returns(Promise.resolve()),
         },
+        read: sinon.stub().returns(Promise.resolve()),
       },
       groups: {
-        list: sandbox.stub().returns(
-          Promise.resolve({
-            data: dummyGroups,
-            token: '1234',
-          })
-        ),
+        list: sinon.stub().returns(dummyGroups),
       },
       profile: {
         groups: {
-          read: sandbox.stub().returns(Promise.resolve([dummyGroups[0]])),
+          read: sinon.stub().returns(Promise.resolve([dummyGroups[0]])),
         },
       },
     };
-    fakeServiceUrl = sandbox.stub();
-    fakeSettings = {};
-  });
-
-  afterEach(function() {
-    sandbox.restore();
+    fakeServiceUrl = sinon.stub();
+    fakeSettings = { group: null };
   });
 
   function service() {
@@ -151,15 +148,73 @@ describe('groups', function() {
   }
 
   describe('#all', function() {
-    it('returns all groups', function() {
+    it('returns all groups from store.allGroups when community-groups feature flag is enabled', () => {
       const svc = service();
-      fakeStore.setState({ groups: dummyGroups });
+      fakeStore.allGroups = sinon.stub().returns(dummyGroups);
+      fakeFeatures.flagEnabled.withArgs('community_groups').returns(true);
       assert.deepEqual(svc.all(), dummyGroups);
+      assert.called(fakeStore.allGroups);
+    });
+
+    it('returns all groups from store.getInScopeGroups when community-groups feature flag is disabled', () => {
+      const svc = service();
+      fakeStore.getInScopeGroups = sinon.stub().returns(dummyGroups);
+      assert.deepEqual(svc.all(), dummyGroups);
+      assert.called(fakeStore.getInScopeGroups);
+    });
+
+    [[0, 1, 2, 3], [2, 0, 1, 3], [0, 3, 1, 2]].forEach(groupInputOrder => {
+      it('sorts the groups in the following order: scoped, public, private maintaining order within each category.', () => {
+        const groups = [
+          { id: 0, type: 'open' },
+          { id: 1, type: 'restricted' },
+          { id: '__world__', type: 'open' },
+          { id: 3, type: 'private' },
+        ];
+        const svc = service();
+        fakeStore.getInScopeGroups = sinon
+          .stub()
+          .returns(groupInputOrder.map(id => groups[id]));
+        assert.deepEqual(svc.all(), groups);
+      });
     });
   });
 
   describe('#load', function() {
-    it('combines groups from both endpoints if community-groups feature flag is set', function() {
+    it('filters out direct-linked groups that are out of scope and scope enforced', () => {
+      const svc = service();
+      fakeLocalStorage.getItem.returns(dummyGroups[0].id);
+      const outOfScopeEnforcedGroup = {
+        id: 'oos',
+        scopes: { enforced: true, uri_patterns: ['http://foo.com'] },
+      };
+      fakeSettings.group = outOfScopeEnforcedGroup.id;
+      fakeApi.group.read.returns(Promise.resolve(outOfScopeEnforcedGroup));
+      return svc.load().then(groups => {
+        // The focus group is not set to the direct-linked group.
+        assert.calledWith(fakeStore.focusGroup, dummyGroups[0].id);
+        // The direct-linked group is not in the list of groups.
+        assert.isFalse(groups.some(g => g.id === fakeSettings.group));
+      });
+    });
+
+    it('catches 404 error from api.group.read request', () => {
+      const svc = service();
+      fakeLocalStorage.getItem.returns(dummyGroups[0].id);
+      fakeSettings.group = 'does-not-exist';
+      fakeApi.group.read.returns(
+        Promise.reject(
+          "404 Not Found: Either the resource you requested doesn't exist, \
+          or you are not currently authorized to see it."
+        )
+      );
+      return svc.load().then(() => {
+        // The focus group is not set to the direct-linked group.
+        assert.calledWith(fakeStore.focusGroup, dummyGroups[0].id);
+      });
+    });
+
+    it('combines groups from both endpoints', function() {
       const svc = service();
 
       const groups = [
@@ -169,10 +224,48 @@ describe('groups', function() {
 
       fakeApi.profile.groups.read.returns(Promise.resolve(groups));
       fakeApi.groups.list.returns(Promise.resolve([groups[0]]));
-      fakeFeatures.flagEnabled.withArgs('community_groups').returns(true);
 
       return svc.load().then(() => {
         assert.calledWith(fakeStore.loadGroups, groups);
+      });
+    });
+
+    it('combines groups from all 3 endpoints if there is a selectedGroup', () => {
+      const svc = service();
+
+      fakeSettings.group = 'selected-id';
+      const groups = [
+        { id: 'groupa', name: 'GroupA' },
+        { id: 'groupb', name: 'GroupB' },
+        { id: fakeSettings.group, name: 'Selected Group' },
+      ];
+
+      fakeApi.profile.groups.read.returns(Promise.resolve([groups[0]]));
+      fakeApi.groups.list.returns(Promise.resolve([groups[1]]));
+      fakeApi.group.read.returns(Promise.resolve(groups[2]));
+
+      return svc.load().then(() => {
+        assert.calledWith(fakeStore.loadGroups, groups);
+      });
+    });
+
+    it('passes the groupid from settings.group to the api.group.read call', () => {
+      const svc = service();
+
+      fakeSettings.group = 'selected-id';
+      const group = { id: fakeSettings.group, name: 'Selected Group' };
+
+      fakeApi.profile.groups.read.returns(Promise.resolve([]));
+      fakeApi.groups.list.returns(Promise.resolve([]));
+      fakeApi.group.read.returns(Promise.resolve(group));
+
+      return svc.load().then(() => {
+        assert.calledWith(
+          fakeApi.group.read,
+          sinon.match({
+            id: fakeSettings.group,
+          })
+        );
       });
     });
 
@@ -184,21 +277,12 @@ describe('groups', function() {
       });
     });
 
-    it('always sends the `expand` parameter', function() {
-      const svc = service();
-      return svc.load().then(() => {
-        const call = fakeApi.groups.list.getCall(0);
-        assert.isObject(call.args[0]);
-        assert.equal(call.args[0].expand, 'organization');
-      });
-    });
-
-    it('sends `expand` parameter when community-groups feature flag is enabled', function() {
+    it('sends `expand` parameter', function() {
       const svc = service();
       fakeApi.groups.list.returns(
         Promise.resolve([{ id: 'groupa', name: 'GroupA' }])
       );
-      fakeFeatures.flagEnabled.withArgs('community_groups').returns(true);
+      fakeSettings.group = 'group-id';
 
       return svc.load().then(() => {
         assert.calledWith(
@@ -209,6 +293,10 @@ describe('groups', function() {
           fakeApi.groups.list,
           sinon.match({ expand: ['organization', 'scopes'] })
         );
+        assert.calledWith(
+          fakeApi.group.read,
+          sinon.match({ expand: ['organization', 'scopes'] })
+        );
       });
     });
 
@@ -217,6 +305,25 @@ describe('groups', function() {
       fakeLocalStorage.getItem.returns(dummyGroups[1].id);
       return svc.load().then(() => {
         assert.calledWith(fakeStore.focusGroup, dummyGroups[1].id);
+      });
+    });
+
+    it('sets the direct-linked group to take precedence over the group saved in local storage', () => {
+      const svc = service();
+      fakeSettings.group = dummyGroups[1].id;
+      fakeLocalStorage.getItem.returns(dummyGroups[0].id);
+      fakeApi.groups.list.returns(Promise.resolve(dummyGroups));
+      return svc.load().then(() => {
+        assert.calledWith(fakeStore.focusGroup, dummyGroups[1].id);
+      });
+    });
+
+    it('sets the focused group to the linked group', () => {
+      const svc = service();
+      fakeSettings.group = dummyGroups[1].id;
+      fakeApi.groups.list.returns(Promise.resolve(dummyGroups));
+      return svc.load().then(() => {
+        assert.calledWith(fakeStore.focusGroup, fakeSettings.group);
       });
     });
 
@@ -241,7 +348,7 @@ describe('groups', function() {
         return loaded.then(() => {
           assert.calledWith(fakeApi.groups.list, {
             document_uri: 'https://asite.com',
-            expand: 'organization',
+            expand: ['organization', 'scopes'],
           });
         });
       });
@@ -257,7 +364,7 @@ describe('groups', function() {
         const svc = service();
         return svc.load().then(() => {
           assert.calledWith(fakeApi.groups.list, {
-            expand: 'organization',
+            expand: ['organization', 'scopes'],
           });
         });
       });
@@ -277,15 +384,74 @@ describe('groups', function() {
     it('injects a defalt organization if group is missing an organization', function() {
       const svc = service();
       const groups = [{ id: '39r39f', name: 'Ding Dong!' }];
-      fakeApi.groups.list.returns(
-        Promise.resolve({
-          token: '1234',
-          data: groups,
-        })
-      );
+      fakeApi.groups.list.returns(Promise.resolve(groups));
       return svc.load().then(groups => {
         assert.isObject(groups[0].organization);
         assert.hasAllKeys(groups[0].organization, ['id', 'logo']);
+      });
+    });
+
+    it('both groups are in the final groups list when an annotation and a group are linked to', () => {
+      // This can happen if the linked to annotation and group are configured by
+      // the frame embedding the client.
+      const svc = service();
+
+      fakeSettings.group = 'out-of-scope';
+      fakeSettings.annotations = 'ann-id';
+
+      fakeApi.profile.groups.read.returns(Promise.resolve([]));
+      fakeApi.groups.list.returns(
+        Promise.resolve([
+          { name: 'BioPub', id: 'biopub' },
+          { name: 'Public', id: '__world__' },
+        ])
+      );
+      fakeApi.group.read.returns(
+        Promise.resolve({ name: 'Restricted', id: 'out-of-scope' })
+      );
+      fakeApi.annotation.get.returns(
+        Promise.resolve({
+          id: 'ann-id',
+          group: '__world__',
+        })
+      );
+
+      // The user is logged out.
+      fakeAuth.tokenGetter.returns(null);
+
+      return svc.load().then(groups => {
+        const linkedToGroupShown = groups.some(g => g.id === 'out-of-scope');
+        assert.isTrue(linkedToGroupShown);
+        const linkedToAnnGroupShown = groups.some(g => g.id === '__world__');
+        assert.isTrue(linkedToAnnGroupShown);
+      });
+    });
+
+    it('includes the "Public" group if the user links to it', () => {
+      // Set up the test under conditions that would otherwise
+      // not return the Public group. Aka: the user is logged
+      // out and there are associated groups.
+      const svc = service();
+
+      fakeSettings.group = '__world__';
+      fakeSettings.annotations = undefined;
+
+      fakeApi.profile.groups.read.returns(Promise.resolve([]));
+      fakeApi.groups.list.returns(
+        Promise.resolve([
+          { name: 'BioPub', id: 'biopub' },
+          { name: 'Public', id: '__world__' },
+        ])
+      );
+      fakeApi.group.read.returns(
+        Promise.resolve({ name: 'Public', id: '__world__' })
+      );
+
+      fakeAuth.tokenGetter.returns(null);
+
+      return svc.load().then(groups => {
+        const publicGroupShown = groups.some(g => g.id === '__world__');
+        assert.isTrue(publicGroupShown);
       });
     });
 
@@ -308,7 +474,7 @@ describe('groups', function() {
             );
             fakeSettings.annotations = 'direct-linked-ann';
           } else {
-            fakeSettings.annotations = null;
+            fakeSettings.annotations = undefined;
           }
 
           // Create groups response from server.
@@ -317,12 +483,8 @@ describe('groups', function() {
             groups.push({ name: 'BioPub', id: 'biopub' });
           }
 
-          fakeApi.groups.list.returns(
-            Promise.resolve({
-              token: loggedIn ? '1234' : null,
-              data: groups,
-            })
-          );
+          fakeAuth.tokenGetter.returns(loggedIn ? '1234' : null);
+          fakeApi.groups.list.returns(Promise.resolve(groups));
 
           return svc.load().then(groups => {
             const publicGroupShown = groups.some(g => g.id === '__world__');
@@ -375,12 +537,8 @@ describe('groups', function() {
           { name: 'DEF', id: 'def456', groupid: null },
         ];
 
-        fakeApi.groups.list.returns(
-          Promise.resolve({
-            token: '1234',
-            data: groups,
-          })
-        );
+        fakeApi.groups.list.returns(Promise.resolve(groups));
+        fakeApi.profile.groups.read.returns(Promise.resolve([]));
 
         return svc.load().then(groups => {
           let displayedGroups = groups.map(g => g.id);

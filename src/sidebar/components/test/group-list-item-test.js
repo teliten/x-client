@@ -1,8 +1,9 @@
 'use strict';
 
 const { createElement } = require('preact');
+
 const { mount } = require('enzyme');
-const proxyquire = require('proxyquire');
+const GroupListItem = require('../group-list-item');
 
 const { events } = require('../../services/analytics');
 
@@ -10,19 +11,6 @@ describe('GroupListItem', () => {
   let fakeAnalytics;
   let fakeStore;
   let fakeGroupListItemCommon;
-  let GroupListItem;
-
-  before(() => {
-    fakeGroupListItemCommon = {
-      orgName: sinon.stub(),
-      trackViewGroupActivity: sinon.stub(),
-    };
-
-    GroupListItem = proxyquire('../group-list-item', {
-      '../util/group-list-item-common': fakeGroupListItemCommon,
-      '@noCallThru': true,
-    });
-  });
 
   beforeEach(() => {
     fakeStore = {
@@ -34,6 +22,19 @@ describe('GroupListItem', () => {
       track: sinon.stub(),
       events,
     };
+
+    fakeGroupListItemCommon = {
+      orgName: sinon.stub(),
+      trackViewGroupActivity: sinon.stub(),
+    };
+
+    GroupListItem.$imports.$mock({
+      '../util/group-list-item-common': fakeGroupListItemCommon,
+    });
+  });
+
+  afterEach(() => {
+    GroupListItem.$imports.$restore();
   });
 
   const createGroupListItem = fakeGroup => {

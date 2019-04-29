@@ -157,14 +157,9 @@ function startAngularApp(config) {
     .component('excerpt', require('./components/excerpt'))
     .component('groupList', require('./components/group-list'))
     .component(
-      'groupListItem',
-      wrapReactComponent(require('./components/group-list-item'))
+      'groupListSection',
+      wrapReactComponent(require('./components/group-list-section'))
     )
-    .component(
-      'groupListItemOutOfScope',
-      wrapReactComponent(require('./components/group-list-item-out-of-scope'))
-    )
-    .component('groupListSection', require('./components/group-list-section'))
     .component('helpLink', require('./components/help-link'))
     .component('helpPanel', require('./components/help-panel'))
     .component('loggedoutMessage', require('./components/loggedout-message'))
@@ -180,6 +175,10 @@ function startAngularApp(config) {
     .component('searchStatusBar', require('./components/search-status-bar'))
     .component('selectionTabs', require('./components/selection-tabs'))
     .component('sidebarContent', require('./components/sidebar-content'))
+    .component(
+      'sidebarContentError',
+      wrapReactComponent(require('./components/sidebar-content-error'))
+    )
     .component('sidebarTutorial', require('./components/sidebar-tutorial'))
     .component('shareDialog', require('./components/share-dialog'))
     .component('sortDropdown', require('./components/sort-dropdown'))
