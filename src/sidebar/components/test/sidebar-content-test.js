@@ -6,6 +6,7 @@ const EventEmitter = require('tiny-emitter');
 const events = require('../../events');
 const sidebarContent = require('../sidebar-content');
 const uiConstants = require('../../ui-constants');
+const util = require('../../directive/test/util');
 
 let searchClients;
 
@@ -149,6 +150,19 @@ describe('sidebar.components.sidebar-content', function() {
     });
   }
 
+  function createSidebarContent(
+    { userid } = { userid: 'acct:person@example.com' }
+  ) {
+    return util.createDirective(document, 'sidebarContent', {
+      auth: {
+        status: userid ? 'logged-in' : 'logged-out',
+        userid: userid,
+      },
+      search: sinon.stub().returns({ query: sinon.stub() }),
+      onLogin: sinon.stub(),
+    });
+  }
+
   const makeSidebarContentController = () => {
     angular.mock.inject(function($componentController, _store_, _$rootScope_) {
       $rootScope = _$rootScope_;
@@ -199,11 +213,18 @@ describe('sidebar.components.sidebar-content', function() {
     });
 
     it('clears the directLinkedGroupFetchFailed state', () => {
-      ctrl.directLinkedGroupFetchFailed = true;
+      store.setDirectLinkedGroupFetchFailed();
 
       ctrl.clearSelection();
 
-      assert.isFalse(ctrl.directLinkedGroupFetchFailed);
+      assert.isFalse(store.getState().directLinkedGroupFetchFailed);
+    });
+
+    it('clears the direct linked IDs in the store', () => {
+      ctrl.clearSelection();
+
+      assert.equal(store.getState().directLinkedAnnotationId, null);
+      assert.equal(store.getState().directLinkedGroupId, null);
     });
   });
 
@@ -220,12 +241,8 @@ describe('sidebar.components.sidebar-content', function() {
 
     it('returns false if selected group is unavailable', () => {
       fakeSettings.group = 'group-id';
-      store.loadGroups([{ id: 'default-id' }]);
-      store.focusGroup('default-id');
-      fakeGroups.focused.returns({ id: 'default-id' });
+      store.setDirectLinkedGroupFetchFailed();
       $scope.$digest();
-      // Re-construct the controller after the environment setup.
-      makeSidebarContentController();
       assert.isFalse(ctrl.showSelectedTabs());
     });
 
@@ -329,16 +346,21 @@ describe('sidebar.components.sidebar-content', function() {
       beforeEach(() => {
         setFrames([{ uri: 'http://www.example.com' }]);
         fakeSettings.group = 'group-id';
-        store.loadGroups([{ id: 'default-id' }]);
-        store.focusGroup('default-id');
-        fakeGroups.focused.returns({ id: 'default-id' });
+        store.setDirectLinkedGroupFetchFailed();
         $scope.$digest();
-        // Re-construct the controller after the environment setup.
-        makeSidebarContentController();
       });
 
-      it('sets directLinkedGroupFetchFailed to true', () => {
-        assert.isTrue(ctrl.directLinkedGroupFetchFailed);
+      [null, 'acct:person@example.com'].forEach(userid => {
+        it('displays same group error message regardless of login state', () => {
+          const element = createSidebarContent({ userid });
+
+          const sidebarContentError = element.find('.sidebar-content-error');
+          const errorMessage = sidebarContentError.attr(
+            'logged-in-error-message'
+          );
+
+          assert.equal(errorMessage, "'This group is not available.'");
+        });
       });
 
       it('areAllAnnotationsVisible returns true since there is an error message', () => {
@@ -358,10 +380,6 @@ describe('sidebar.components.sidebar-content', function() {
         store.focusGroup(fakeSettings.group);
         fakeGroups.focused.returns({ id: fakeSettings.group });
         $scope.$digest();
-      });
-
-      it('sets directLinkedGroupFetchFailed to false', () => {
-        assert.isFalse(ctrl.directLinkedGroupFetchFailed);
       });
 
       it('areAllAnnotationsVisible returns false since group has no annotations', () => {
@@ -577,8 +595,7 @@ describe('sidebar.components.sidebar-content', function() {
     }
 
     beforeEach(function() {
-      // There is a direct-linked annotation
-      fakeSettings.annotations = 'test';
+      store.setDirectLinkedAnnotationId('test');
     });
 
     it('displays a message if the selection is unavailable', function() {
@@ -660,7 +677,7 @@ describe('sidebar.components.sidebar-content', function() {
       ctrl.auth = {
         status: 'logged-out',
       };
-      delete fakeSettings.annotations;
+      store.setDirectLinkedAnnotationId(null);
       store.addAnnotations([{ id: '123' }]);
       store.selectAnnotations(['123']);
       $scope.$digest();
