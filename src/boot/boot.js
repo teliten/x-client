@@ -26,7 +26,7 @@ async function injectPagefit(doc, config) {
     if (doc.URL.startsWith('chrome-extension://klbpknfhnhedbbonpfpceagkglpbcmnb/content/web/viewer.html')) {
       resolve()
     } else {
-      injectScript(doc, "".concat(config.assetRoot, "/pagefit2.js"));
+      injectScript(doc, "".concat(config.assetRoot, "/htmlPagefit.js"));
       resolve()
     }
   })
