@@ -3,8 +3,15 @@
 // @ngInject
 function TagEditorController(tags) {
   this.onTagsChanged = function() {
+    const _taglist = JSON.parse(localStorage.getItem('hypothesis.user.tags.list'))
+    for ( let i = 0; i < this.tagList.length; i++ ) {
+      const spacePrefixedTag = ' ' + this.tagList[i].text
+      const tagIndexInTagList = _taglist.indexOf(spacePrefixedTag)
+      if ( tagIndexInTagList != -1) {
+        this.tagList[i] = { text: spacePrefixedTag }
+      }
+    }
     tags.store(this.tagList);
-
     const newTags = this.tagList.map(function(item) {
       return item.text;
     });

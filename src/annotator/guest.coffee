@@ -240,7 +240,7 @@ module.exports = class Guest extends Delegator
       return animationPromise ->
         range = xpathRange.sniff(anchor.range)
         normedRange = range.normalize(root)
-        highlights = highlighter.highlightRange(normedRange)
+        highlights = highlighter.highlightRange(normedRange, null, annotation.id)
 
         $(highlights).data('annotation', anchor.annotation)
         anchor.highlights = highlights
@@ -438,8 +438,9 @@ module.exports = class Guest extends Delegator
       this.showAnnotations annotations
 
   onElementClick: (event) ->
-    if !@selectedTargets?.length
-      @crossframe?.call('hideSidebar')
+    #if !@selectedTargets?.length
+    if false 
+       @crossframe?.call('hideSidebar')
 
   onElementTouchStart: (event) ->
     # Mobile browsers do not register click events on

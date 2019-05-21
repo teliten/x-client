@@ -31,6 +31,7 @@ function formatAnnot(ann) {
       document: ann.document,
       target: ann.target,
       uri: ann.uri,
+      id: ann.id,
     },
   };
 }

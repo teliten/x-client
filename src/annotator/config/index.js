@@ -26,7 +26,9 @@ function configFrom(window_) {
     group: settings.group,
     theme: settings.hostPageSetting('theme'),
     usernameUrl: settings.hostPageSetting('usernameUrl'),
-    onLayoutChange: settings.hostPageSetting('onLayoutChange'),
+    onLayoutChange: settings.hostPageSetting('onLayoutChange', {
+      allowInBrowserExt: true,
+    }),
     openSidebar: settings.hostPageSetting('openSidebar', {
       allowInBrowserExt: true,
     }),
