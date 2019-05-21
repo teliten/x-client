@@ -448,7 +448,8 @@ module.exports = class Guest extends Delegator
     # adding that to every element, we can add the initial
     # touchstart event which is always registered to
     # make up for the lack of click support for all elements.
-    if !@selectedTargets?.length
+    #if !@selectedTargets?.length
+      if false
       @crossframe?.call('hideSidebar')
 
   onHighlightMouseover: (event) ->
