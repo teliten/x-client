@@ -449,7 +449,7 @@ module.exports = class Guest extends Delegator
     # touchstart event which is always registered to
     # make up for the lack of click support for all elements.
     #if !@selectedTargets?.length
-      if false
+    if false
       @crossframe?.call('hideSidebar')
 
   onHighlightMouseover: (event) ->
