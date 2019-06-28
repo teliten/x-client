@@ -14,7 +14,7 @@
 
   // Force top-bar onto a new compositor layer so that it does not judder when
   // the window is scrolled.
-  transform: translate3d(0,0,0);
+  transform: translate3d(0, 0, 0);
 }
 
 .top-bar--theme-clean {
@@ -62,10 +62,11 @@
 .top-bar__btn {
   @include reset-native-btn-styles;
 
+  height: 100%;
   color: $gray-light;
   display: inline-block;
   cursor: pointer;
-  padding: 0 3px;
+  padding: 1px 3px 0 3px;
 
   &:hover {
     color: $gray-dark;

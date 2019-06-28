@@ -17,10 +17,11 @@ describe('topBar', function() {
         bindings: require('../login-control').bindings,
       })
       .component('searchInput', {
-        bindings: require('../search-input').bindings,
-      })
-      .component('sortDropdown', {
-        bindings: require('../sort-dropdown').bindings,
+        bindings: {
+          alwaysExpanded: '<',
+          query: '<',
+          onSearch: '&',
+        },
       });
   });
 
@@ -42,6 +43,10 @@ describe('topBar', function() {
 
   function applyUpdateBtn(el) {
     return el.querySelector('.top-bar__apply-update-btn');
+  }
+
+  function helpBtn(el) {
+    return el.querySelector('.top-bar__help-btn');
   }
 
   function createTopBar(inputs) {
@@ -82,6 +87,16 @@ describe('topBar', function() {
     assert.called(onApplyPendingUpdates);
   });
 
+  it('shows help when help icon clicked', function() {
+    const onShowHelpPanel = sinon.stub();
+    const el = createTopBar({
+      onShowHelpPanel: onShowHelpPanel,
+    });
+    const help = helpBtn(el[0]);
+    help.click();
+    assert.called(onShowHelpPanel);
+  });
+
   it('displays the login control and propagates callbacks', function() {
     const onShowHelpPanel = sinon.stub();
     const onLogin = sinon.stub();
@@ -92,9 +107,6 @@ describe('topBar', function() {
       onLogout: onLogout,
     });
     const loginControl = el.find('login-control').controller('loginControl');
-
-    loginControl.onShowHelpPanel();
-    assert.called(onShowHelpPanel);
 
     loginControl.onLogin();
     assert.called(onLogin);
@@ -158,25 +170,6 @@ describe('topBar', function() {
 
     searchInput.onSearch({ $query: 'new-query' });
     assert.calledWith(onSearch, 'new-query');
-  });
-
-  it('displays the sort dropdown and propagates sort key changes', function() {
-    const onChangeSortKey = sinon.stub();
-    const el = createTopBar({
-      sortKeysAvailable: ['Newest', 'Oldest'],
-      sortKey: 'Newest',
-      onChangeSortKey: {
-        args: ['sortKey'],
-        callback: onChangeSortKey,
-      },
-    });
-    const sortDropdown = el.find('sort-dropdown').controller('sortDropdown');
-
-    assert.deepEqual(sortDropdown.sortKeysAvailable, ['Newest', 'Oldest']);
-    assert.deepEqual(sortDropdown.sortKey, 'Newest');
-
-    sortDropdown.onChangeSortKey({ sortKey: 'Oldest' });
-    assert.calledWith(onChangeSortKey, 'Oldest');
   });
 
   it('shows the clean theme when settings contains the clean theme option', function() {

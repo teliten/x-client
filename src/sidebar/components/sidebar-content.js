@@ -3,28 +3,15 @@
 const SearchClient = require('../search-client');
 const events = require('../events');
 const isThirdPartyService = require('../util/is-third-party-service');
-const memoize = require('../util/memoize');
 const tabs = require('../tabs');
-const uiConstants = require('../ui-constants');
-
-function firstKey(object) {
-  for (const k in object) {
-    if (!object.hasOwnProperty(k)) {
-      continue;
-    }
-    return k;
-  }
-  return null;
-}
 
 /**
  * Returns the group ID of the first annotation in `results` whose
- * ID is a key in `selection`.
+ * ID is `annId`.
  */
-function groupIDFromSelection(selection, results) {
-  const id = firstKey(selection);
+function getGroupID(annId, results) {
   const annot = results.find(function(annot) {
-    return annot.id === id;
+    return annot.id === annId;
   });
   if (!annot) {
     return null;
@@ -123,10 +110,7 @@ function SidebarContentController(
       if (store.hasSelectedAnnotations()) {
         // Focus the group containing the selected annotation and filter
         // annotations to those from this group
-        let groupID = groupIDFromSelection(
-          store.getState().selectedAnnotationMap,
-          results
-        );
+        let groupID = getGroupID(store.getFirstSelectedAnnotationId(), results);
         if (!groupID) {
           // If the selected annotation is not available, fall back to
           // loading annotations for the currently focused group
@@ -279,7 +263,7 @@ function SidebarContentController(
     if (
       this.selectedAnnotationUnavailable() ||
       this.selectedGroupUnavailable() ||
-      this.search.query()
+      store.getState().filterQuery
     ) {
       return false;
     }
@@ -290,33 +274,15 @@ function SidebarContentController(
     store.setCollapsed(id, collapsed);
   };
 
-  this.forceVisible = function(thread) {
-    store.setForceVisible(thread.id, true);
-    if (thread.parent) {
-      store.setCollapsed(thread.parent.id, false);
-    }
-  };
-
   this.focus = focusAnnotation;
   this.scrollTo = scrollToAnnotation;
-
-  this.areAllAnnotationsVisible = function() {
-    if (store.getState().directLinkedGroupFetchFailed) {
-      return true;
-    }
-    const selection = store.getState().selectedAnnotationMap;
-    if (!selection) {
-      return false;
-    }
-    return Object.keys(selection).length > 0;
-  };
 
   this.selectedGroupUnavailable = function() {
     return !this.isLoading() && store.getState().directLinkedGroupFetchFailed;
   };
 
   this.selectedAnnotationUnavailable = function() {
-    const selectedID = firstKey(store.getState().selectedAnnotationMap);
+    const selectedID = store.getFirstSelectedAnnotationId();
     return (
       !this.isLoading() && !!selectedID && !store.annotationExists(selectedID)
     );
@@ -343,42 +309,10 @@ function SidebarContentController(
     // The user is logged out and has landed on a direct linked
     // annotation. If there is an annotation selection and that
     // selection is available to the user, show the CTA.
-    const selectedID = firstKey(store.getState().selectedAnnotationMap);
+    const selectedID = store.getFirstSelectedAnnotationId();
     return (
       !this.isLoading() && !!selectedID && store.annotationExists(selectedID)
     );
-  };
-
-  const visibleCount = memoize(function(thread) {
-    return thread.children.reduce(
-      function(count, child) {
-        return count + visibleCount(child);
-      },
-      thread.visible ? 1 : 0
-    );
-  });
-
-  this.visibleCount = function() {
-    return visibleCount(thread());
-  };
-
-  this.topLevelThreadCount = function() {
-    return thread().totalChildren;
-  };
-
-  this.clearSelection = function() {
-    let selectedTab = store.getState().selectedTab;
-    if (
-      !store.getState().selectedTab ||
-      store.getState().selectedTab === uiConstants.TAB_ORPHANS
-    ) {
-      selectedTab = uiConstants.TAB_ANNOTATIONS;
-    }
-
-    store.clearSelectedAnnotations();
-    store.selectTab(selectedTab);
-    store.clearDirectLinkedGroupFetchFailed();
-    store.clearDirectLinkedIds();
   };
 }
 
@@ -387,7 +321,6 @@ module.exports = {
   controllerAs: 'vm',
   bindings: {
     auth: '<',
-    search: '<',
     onLogin: '&',
   },
   template: require('../templates/sidebar-content.html'),
