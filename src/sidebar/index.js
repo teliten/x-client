@@ -91,7 +91,7 @@ function configureRoutes($routeProvider) {
   });
   $routeProvider.otherwise({
     template:
-      '<sidebar-content search="vm.search" auth="vm.auth" on-login="vm.login()"></sidebar-content>',
+      '<sidebar-content auth="vm.auth" on-login="vm.login()"></sidebar-content>',
     reloadOnSearch: false,
     resolve: resolve,
   });
@@ -131,7 +131,6 @@ function startAngularApp(config) {
       // Angular addons which do not export the Angular module
       // name via module.exports
       ['ngTagsInput', require('ng-tags-input')][0],
-      ['ui.bootstrap', require('./vendor/ui-bootstrap-custom-tpls-0.13.4')][0],
 
       // Local addons
       'ngRaven',
@@ -148,33 +147,44 @@ function startAngularApp(config) {
       wrapReactComponent(require('./components/annotation-action-button'))
     )
     .component(
+      'annotationPublishControl',
+      wrapReactComponent(require('./components/annotation-publish-control'))
+    )
+    .component(
       'annotationShareDialog',
       require('./components/annotation-share-dialog')
     )
     .component('annotationThread', require('./components/annotation-thread'))
     .component(
+      'annotationUser',
+      wrapReactComponent(require('./components/annotation-user'))
+    )
+    .component(
       'annotationViewerContent',
       require('./components/annotation-viewer-content')
     )
-    .component('dropdownMenuBtn', require('./components/dropdown-menu-btn'))
     .component('excerpt', require('./components/excerpt'))
-    .component('groupList', require('./components/group-list'))
     .component(
-      'groupListSection',
-      wrapReactComponent(require('./components/group-list-section'))
+      'groupList',
+      wrapReactComponent(require('./components/group-list'))
     )
-    .component('helpLink', require('./components/help-link'))
+    .component(
+      'helpLink',
+      wrapReactComponent(require('./components/help-link'))
+    )
     .component('helpPanel', require('./components/help-panel'))
     .component('loggedoutMessage', require('./components/loggedout-message'))
     .component('loginControl', require('./components/login-control'))
     .component('markdown', require('./components/markdown'))
-    .component('moderationBanner', require('./components/moderation-banner'))
+    .component(
+      'moderationBanner',
+      wrapReactComponent(require('./components/moderation-banner'))
+    )
     .component('newNoteBtn', require('./components/new-note-btn'))
     .component(
-      'publishAnnotationBtn',
-      require('./components/publish-annotation-btn')
+      'searchInput',
+      wrapReactComponent(require('./components/search-input'))
     )
-    .component('searchInput', require('./components/search-input'))
     .component('searchStatusBar', require('./components/search-status-bar'))
     .component('selectionTabs', require('./components/selection-tabs'))
     .component('sidebarContent', require('./components/sidebar-content'))
@@ -184,14 +194,24 @@ function startAngularApp(config) {
     )
     .component('sidebarTutorial', require('./components/sidebar-tutorial'))
     .component('shareDialog', require('./components/share-dialog'))
-    .component('sortDropdown', require('./components/sort-dropdown'))
-    .component('spinner', require('./components/spinner'))
+    .component(
+      'sortMenu',
+      wrapReactComponent(require('./components/sort-menu'))
+    )
+    .component('spinner', wrapReactComponent(require('./components/spinner')))
     .component('streamContent', require('./components/stream-content'))
     .component('svgIcon', wrapReactComponent(require('./components/svg-icon')))
     .component('tagEditor', require('./components/tag-editor'))
     .component('threadList', require('./components/thread-list'))
-    .component('timestamp', require('./components/timestamp'))
+    .component(
+      'timestamp',
+      wrapReactComponent(require('./components/timestamp'))
+    )
     .component('topBar', require('./components/top-bar'))
+    .component(
+      'userMenu',
+      wrapReactComponent(require('./components/user-menu'))
+    )
 
     .directive('hAutofocus', require('./directive/h-autofocus'))
     .directive('hBranding', require('./directive/h-branding'))
